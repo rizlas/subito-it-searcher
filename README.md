@@ -13,7 +13,7 @@ Features (thanks to Marco Perronet)
 
 ## Setup
 
-### Install dependencies 
+### Install dependencies
 ```pip3 install -r requirements.txt```
 
 NB: For Windows 10 users, install also ```win10toast```.
@@ -29,8 +29,29 @@ To configure Telegram, simply invoke the script with the proper parameters as fo
 
 `python3 subito-searcher.py --addtoken [YOUR_API_TOKEN] --addchatid [YOUR_CHANNEL_NAME]`
 
+### Docker
+
+Is also possible to run it via docker. State files are persisted in a local `data/`
+directory mounted as a volume.
+
+```bash
+docker build -t subito-searcher .
+docker run -v ./data:/app/data subito-searcher <flags>
+```
+
+Or with Docker Compose:
+
+```yaml
+services:
+  subito-searcher:
+    build: .
+    volumes:
+      - ./data:/app/data
+    command: <flags>
+```
+
 ## Usage
-Write `python3 subito-searcher.py --help` to see all the command line arguments. Keep in mind that the script *always* needs some argument in order to start. 
+Write `python3 subito-searcher.py --help` to see all the command line arguments. Keep in mind that the script *always* needs some argument in order to start.
 
 Here is a cheatsheet of the most common usages:
 
