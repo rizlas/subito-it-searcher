@@ -45,9 +45,13 @@ args = parser.parse_args()
 queries = dict()
 apiCredentials = dict()
 ntfyConfig = dict()
-ntfyConfigFile = "ntfy_config"
-dbFile = "searches.tracked"
-telegramApiFile = "telegram_api_credentials"
+
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+os.makedirs(DATA_DIR, exist_ok=True)
+
+ntfyConfigFile = os.path.join(DATA_DIR, "ntfy_config")
+dbFile = os.path.join(DATA_DIR, "searches.tracked")
+telegramApiFile = os.path.join(DATA_DIR, "telegram_api_credentials")
 
 # Windows notifications
 if platform.system() == "Windows":

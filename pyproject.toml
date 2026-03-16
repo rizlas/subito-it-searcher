@@ -1,0 +1,7 @@
+[project]
+name = "subito-it-searcher"
+version = "1.0.0"
+description = "BeautifulSoup scraper running queries on a popular italian ad website."
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = ["bs4>=0.0.2", "requests>=2.32.5"]
