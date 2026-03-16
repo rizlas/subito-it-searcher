@@ -2,3 +2,4 @@ telegram-send.conf
 searches.tracked
 telegram_api_credentials
 .venv
+data
