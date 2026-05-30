@@ -105,7 +105,7 @@ async def cmd_delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return
 
     state = context.application.bot_data
-    name = args[0]
+    name = " ".join(args)
     if name not in state["queries"]:
         await update.message.reply_text(
             f"No search named *{name}* found.", parse_mode=ParseMode.MARKDOWN
