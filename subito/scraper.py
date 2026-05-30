@@ -75,7 +75,7 @@ def run_query(
 
     msg = []
 
-    # --- Fetch & parse ---
+    # Fetch and parse
     page = requests.get(url, headers=HEADERS)
     soup = BeautifulSoup(page.text, "html.parser")
 
@@ -94,7 +94,7 @@ def run_query(
     except KeyError:
         items_list = []
 
-    # --- Process each item ---
+    # Process each item
     for product in items_list:
 
         try:
@@ -171,7 +171,7 @@ def run_query(
                     }
                     logger.debug(f"New result: {title} - {price} - {location}")
 
-    # --- Notify & report ---
+    # Notify and report
     if msg:
         if notify:
             if not cfg.win_notifyoff:

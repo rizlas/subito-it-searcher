@@ -12,6 +12,7 @@ import time as t
 
 from subito import queries as q
 from subito import scraper, storage
+from subito.bot import run_bot
 from subito.cli import build_parser
 from subito.config import AppConfig
 
@@ -50,7 +51,7 @@ def main() -> None:
     active_hour = args.active_hour or int(os.environ.get("ACTIVE_HOUR", 0))
     pause_hour = args.pause_hour or int(os.environ.get("PAUSE_HOUR", 0))
 
-    # --- Subcommands ---
+    # Subcommands
 
     if args.command == "add":
         q.add(queries, args.url, args.name, args.min_price, args.max_price)
@@ -104,7 +105,7 @@ def main() -> None:
             logger.info("ntfy config saved.")
         return
 
-    # --- Run modes ---
+    # Run modes
 
     if args.refresh:
         scraper.refresh(queries, True, cfg, credentials, ntfy_config)
@@ -112,8 +113,6 @@ def main() -> None:
         return
 
     if args.bot:
-        from subito.bot import run_bot
-
         run_bot(
             queries=queries,
             credentials=credentials,
@@ -127,13 +126,16 @@ def main() -> None:
 
     # Default: polling loop
     notify = False
-    while True:
-        if _in_between(datetime.now().time(), time(active_hour), time(pause_hour)):
-            scraper.refresh(queries, notify, cfg, credentials, ntfy_config)
-            notify = True
-            logger.info(f"Next poll in {delay} seconds.")
-            storage.save_queries(queries)
-        t.sleep(delay)
+    try:
+        while True:
+            if _in_between(datetime.now().time(), time(active_hour), time(pause_hour)):
+                scraper.refresh(queries, notify, cfg, credentials, ntfy_config)
+                notify = True
+                logger.info(f"Next poll in {delay} seconds.")
+                storage.save_queries(queries)
+            t.sleep(delay)
+    except KeyboardInterrupt:
+        logger.info("Stopped.")
 
 
 if __name__ == "__main__":
