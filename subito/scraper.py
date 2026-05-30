@@ -6,7 +6,7 @@ run_query() is the full cycle for one search:
   diff against cache, return new items as a list of message strings.
 
 If subito.it changes its page structure, this is where you fix it. The JSON
-path is: props -> pageProps -> initialState -> items -> list.
+path is: props -> pageProps -> initialState -> items -> originalList.
 
 refresh() iterates over all saved searches and calls run_query() for each,
 with network error handling wrapped around the whole loop.
@@ -88,15 +88,14 @@ def run_query(
 
     # Path into Next.js hydration data where subito.it stores search results
     try:
-        items_list = json_data["props"]["pageProps"]["initialState"]["items"]["list"]
+        items_list = json_data["props"]["pageProps"]["initialState"]["items"][
+            "originalList"
+        ]
     except KeyError:
         items_list = []
 
     # --- Process each item ---
-    for item_wrapper in items_list:
-        product = item_wrapper.get("item")
-        if not product:
-            continue
+    for product in items_list:
 
         try:
             item_key = product.get("urn")
@@ -105,6 +104,13 @@ def run_query(
 
             title = product.get("subject", "No Title")
             link = product.get("urls", {}).get("default", "")
+            raw_date = product.get("date", "")
+            try:
+                date = datetime.strptime(raw_date, "%Y-%m-%d %H:%M:%S").strftime(
+                    "%d-%m-%Y %H:%M:%S"
+                )
+            except ValueError:
+                date = raw_date
             location = (
                 product.get("geo", {}).get("town", {}).get("value", "Unknown town")
                 + " ("
@@ -127,16 +133,12 @@ def run_query(
                 except ValueError:
                     pass
 
-            # Shipping (note: features is re-fetched; this preserves original behaviour)
             shipping = None
-            features = product.get("features", {})
             shipping_feature = features.get("/item_shippable")
-            raw_shipping = shipping_feature["values"][0].get("value")
-            if raw_shipping:
-                try:
+            if shipping_feature:
+                raw_shipping = shipping_feature["values"][0].get("value")
+                if raw_shipping:
                     shipping = "(Shipping available)"
-                except ValueError:
-                    pass
 
             is_sold = product.get("sold", False)
 
@@ -154,7 +156,7 @@ def run_query(
             if max_price is None or price == "Unknown price" or price <= max_price:
                 if link not in items:
                     tmp = (
-                        f"{datetime.now().strftime('%Y-%m-%d, %H:%M:%S')}\n"
+                        f"{date}\n"
                         f"*{title}*\n"
                         f"€ {price} {shipping}\n"
                         f"{location}\n"
@@ -165,6 +167,7 @@ def run_query(
                         "title": title,
                         "price": price,
                         "location": location,
+                        "date": date,
                     }
                     logger.debug(f"New result: {title} - {price} - {location}")
 
