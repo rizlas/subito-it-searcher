@@ -74,7 +74,6 @@ def run_query(
     url = search["url"]
     min_price = search["min_price"]  # int or None
     max_price = search["max_price"]  # int or None
-    shipping_only = search.get("shipping_only", False)
     tuttosubito_only = search.get("tuttosubito_only", False)
     items = search["items"]
 
@@ -175,8 +174,6 @@ def run_query(
             continue
 
         # Filters
-        if shipping_only and not shipping:
-            continue
         if tuttosubito_only and not tuttosubito:
             continue
         if min_price is not None and price != "Unknown price" and price < min_price:

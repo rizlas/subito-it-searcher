@@ -75,7 +75,6 @@ def main() -> None:
             args.name,
             args.min_price,
             args.max_price,
-            shipping_only=args.shipping_only,
             tuttosubito_only=args.tuttosubito_only,
         )
         scraper.run_query(

@@ -89,7 +89,8 @@ python3 subito-searcher.py <subcommand> --help
 # Add a search (all filters optional)
 python3 subito-searcher.py add Auto "https://www.subito.it/annunci-italia/vendita/usato/?q=auto"
 python3 subito-searcher.py add Iphone "https://www.subito.it/annunci-italia/vendita/usato/?q=iphone" --min-price 50 --max-price 300
-python3 subito-searcher.py add Iphone "https://www.subito.it/annunci-italia/vendita/usato/?q=iphone" --tuttosubito
+# Add with shipping (use native URL filter) + TuttoSubito buyer protection
+python3 subito-searcher.py add Iphone "https://www.subito.it/annunci-italia/vendita/usato/?q=iphone&shp=true" --tuttosubito
 
 # Remove a search
 python3 subito-searcher.py delete Auto

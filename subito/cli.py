@@ -91,13 +91,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-price", dest="max_price", type=int, help="Maximum price (e.g. 200)"
     )
     p_add.add_argument(
-        "--shipping",
-        dest="shipping_only",
-        action="store_true",
-        help="Only track items that have shipping available",
-    )
-    p_add.set_defaults(shipping_only=False)
-    p_add.add_argument(
         "--tuttosubito",
         dest="tuttosubito_only",
         action="store_true",
