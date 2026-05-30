@@ -1,6 +1,6 @@
 # subito-it-searcher
 
-BeautifulSoup scraper running queries on a popular Italian classifieds website (subito.it).
+Monitor subito.it and get notified when new items match your searches.
 
 ## Features
 
@@ -28,7 +28,7 @@ For Windows 10 notifications, also install `win10toast`.
 3. Save the credentials:
 
 ```bash
-python3 subito-searcher.py --add-token "YOUR_TOKEN" --add-chat-id "@your_channel"
+python3 subito-searcher.py setup --telegram-token "YOUR_TOKEN" --telegram-chat-id "@your_channel"
 ```
 
 ### ntfy configuration
@@ -36,7 +36,7 @@ python3 subito-searcher.py --add-token "YOUR_TOKEN" --add-chat-id "@your_channel
 [ntfy](https://ntfy.sh) is a simple HTTP push notification service:
 
 ```bash
-python3 subito-searcher.py --ntfy-server https://ntfy.sh --ntfy-topic your_topic_name
+python3 subito-searcher.py setup --ntfy-server https://ntfy.sh --ntfy-topic your_topic_name
 ```
 
 Telegram and ntfy are independent. If both are configured, new items are sent to both.
@@ -63,39 +63,35 @@ services:
 
 ```bash
 python3 subito-searcher.py --help
+python3 subito-searcher.py <subcommand> --help
 ```
 
 ### Manage searches
 
 ```bash
 # Add a search (--min-price and --max-price are optional)
-python3 subito-searcher.py --add Auto --url "https://www.subito.it/annunci-italia/vendita/usato/?q=auto"
-python3 subito-searcher.py --add Iphone --url "https://www.subito.it/annunci-italia/vendita/usato/?q=iphone" --min-price 50 --max-price 300
+python3 subito-searcher.py add Auto "https://www.subito.it/annunci-italia/vendita/usato/?q=auto"
+python3 subito-searcher.py add Iphone "https://www.subito.it/annunci-italia/vendita/usato/?q=iphone" --min-price 50 --max-price 300
 
 # Remove a search
-python3 subito-searcher.py --delete Auto
+python3 subito-searcher.py delete Auto
 
-# List active searches (compact)
-python3 subito-searcher.py --short-list
-
-# List active searches with all found items
-python3 subito-searcher.py --list
+# List active searches
+python3 subito-searcher.py list
+python3 subito-searcher.py list --short
 ```
 
 ### Run modes
 
 ```bash
-# Check all searches once and exit
+# Start polling loop (default, no subcommand needed)
+python3 subito-searcher.py
+
+# Custom polling interval and active time window
+python3 subito-searcher.py --delay 30 --active-hour 8 --pause-hour 23
+
+# Run all searches once and exit
 python3 subito-searcher.py --refresh
-
-# Daemon: poll every 2 minutes forever
-python3 subito-searcher.py --daemon
-
-# Daemon with custom delay (seconds)
-python3 subito-searcher.py --daemon --delay 30
-
-# Daemon active only between 08:00 and 23:00
-python3 subito-searcher.py --daemon --active-hour 8 --pause-hour 23
 
 # Interactive Telegram bot (responds to commands + pushes new items automatically)
 python3 subito-searcher.py --bot --delay 120
@@ -117,9 +113,9 @@ When running with `--bot`, send these commands to your Telegram bot:
 ### Notification flags
 
 ```bash
---tgoff       # Disable Telegram notifications
---ntfyoff     # Disable ntfy notifications
---notifyoff   # Disable Windows toast notifications
+--tgoff    # Disable Telegram notifications
+--ntfyoff  # Disable ntfy notifications
+--winoff   # Disable Windows toast notifications
 ```
 
 ### Migration
@@ -127,7 +123,7 @@ When running with `--bot`, send these commands to your Telegram bot:
 If upgrading from a previous version, run once to convert the stored searches file to the new format:
 
 ```bash
-python3 subito-searcher.py --migrate
+python3 subito-searcher.py migrate
 ```
 
 ## Project structure
@@ -140,7 +136,7 @@ subito/
   bot.py                # Interactive Telegram bot daemon
   queries.py            # add, delete, print helpers
   storage.py            # Load/save JSON state files + migration
-  cli.py                # All CLI flags in one place
+  cli.py                # Subcommands and flags
   config.py             # Paths and AppConfig dataclass
 data/                   # State files, gitignored, Docker volume
   searches.tracked
@@ -151,5 +147,5 @@ data/                   # State files, gitignored, Docker volume
 ## Troubleshooting
 
 - **No Telegram messages**: confirm the bot is added to the channel as admin and the chat ID starts with `@`
-- **No items found**: subito.it embeds results in a `__NEXT_DATA__` script tag. If the site redesigns, update the JSON path at the top of `subito/scraper.py`
+- **No items found**: subito.it embeds results in a `__NEXT_DATA__` script tag. If the site redesigns, update the JSON path in `subito/scraper.py`
 - **Test Telegram manually**: `https://api.telegram.org/bot<TOKEN>/sendMessage?chat_id=<CHATID>&text=test`

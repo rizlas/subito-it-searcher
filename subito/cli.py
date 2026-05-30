@@ -1,135 +1,125 @@
-"""Command-line interface: all flags defined in one place.
+"""Command-line interface: subcommands for actions, flags for run control.
 
-Every argument is declared inside build_parser(). To add, remove, or rename
-a flag, this is the only file to touch. Includes --migrate for one-time
-data format upgrades (see storage.migrate_queries).
+Subcommands: add, delete, list, migrate, setup
+Run modes (top-level flags): default polling, --refresh, --bot
 """
 
 import argparse
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser()
-
-    # Search management
-    parser.add_argument("--add", dest="name", help="Name of new tracking to be added")
-    parser.add_argument("--url", help="URL for your new tracking's search query")
-    parser.add_argument(
-        "--min-price", dest="min_price", help="Minimum price for the query"
+    parser = argparse.ArgumentParser(
+        description=(
+            "Monitor subito.it and get notified when new items match your searches."
+        ),
     )
-    parser.add_argument(
-        "--max-price", dest="max_price", help="Maximum price for the query"
-    )
-    parser.add_argument("--delete", help="Name of the search you want to delete")
 
-    # Execution modes
     parser.add_argument(
         "--refresh",
         "-r",
         dest="refresh",
         action="store_true",
-        help="Refresh search results once",
+        help="Run all searches once and exit",
     )
     parser.set_defaults(refresh=False)
-
-    parser.add_argument(
-        "--daemon",
-        "-d",
-        dest="daemon",
-        action="store_true",
-        help="Keep refreshing search results forever (default delay 120 seconds)",
-    )
-    parser.set_defaults(daemon=False)
 
     parser.add_argument(
         "--bot",
         dest="bot",
         action="store_true",
-        help="Run as an interactive Telegram bot daemon (requires token + chatid)",
+        help="Start interactive Telegram bot",
     )
     parser.set_defaults(bot=False)
 
     parser.add_argument(
+        "--delay",
+        dest="delay",
+        default=120,
+        type=int,
+        help="Polling interval in seconds (default: 120)",
+    )
+    parser.add_argument(
         "--active-hour",
         "-ah",
         dest="active_hour",
-        help="Hour when to be active in 24h notation",
+        type=int,
+        help="Hour when to start polling in 24h notation (e.g. 8 for 08:00)",
     )
     parser.add_argument(
         "--pause-hour",
         "-ph",
         dest="pause_hour",
-        help="Hour when to pause in 24h notation",
+        type=int,
+        help="Hour when to stop polling in 24h notation (e.g. 23 for 23:00)",
     )
-    parser.add_argument(
-        "--delay",
-        dest="delay",
-        help="Delay for the daemon option (in seconds)",
-    )
-    parser.set_defaults(delay=120)
 
-    parser.add_argument(
-        "--migrate",
-        dest="migrate",
-        action="store_true",
-        help="Migrate searches.tracked from the old nested format to the new format",
-    )
-    parser.set_defaults(migrate=False)
-
-    # Display
-    parser.add_argument(
-        "--list",
-        dest="list",
-        action="store_true",
-        help="Print a list of current trackings",
-    )
-    parser.set_defaults(list=False)
-
-    parser.add_argument(
-        "--short-list",
-        dest="short_list",
-        action="store_true",
-        help="Print a more compact list",
-    )
-    parser.set_defaults(short_list=False)
-
-    # Notification control
-    parser.add_argument(
+    # Notifications flags
+    notif = parser.add_argument_group("notifications")
+    notif.add_argument(
         "--tgoff",
         dest="tgoff",
         action="store_true",
-        help="Turn off Telegram messages",
+        help="Disable Telegram notifications",
     )
     parser.set_defaults(tgoff=False)
-
-    parser.add_argument(
-        "--notifyoff",
-        dest="win_notifyoff",
-        action="store_true",
-        help="Turn off Windows notifications",
-    )
-    parser.set_defaults(win_notifyoff=False)
-
-    parser.add_argument(
+    notif.add_argument(
         "--ntfyoff",
         dest="ntfyoff",
         action="store_true",
-        help="Turn off ntfy notifications",
+        help="Disable ntfy notifications",
     )
     parser.set_defaults(ntfyoff=False)
+    notif.add_argument(
+        "--winoff",
+        dest="win_notifyoff",
+        action="store_true",
+        help="Disable Windows toast notifications",
+    )
+    parser.set_defaults(win_notifyoff=False)
 
-    # Telegram setup
-    parser.add_argument(
-        "--add-token", dest="token", help="Telegram setup: add bot API token"
+    # Subcommands
+    sub = parser.add_subparsers(dest="command")
+
+    # Add
+    p_add = sub.add_parser("add", help="Add a new search")
+    p_add.add_argument("name", help="Name for this search")
+    p_add.add_argument("url", help="Subito.it search URL")
+    p_add.add_argument(
+        "--min-price", dest="min_price", type=int, help="Minimum price (e.g. 50)"
     )
-    parser.add_argument(
-        "--add-chat-id", dest="chatid", help="Telegram setup: add bot chat id"
+    p_add.add_argument(
+        "--max-price", dest="max_price", type=int, help="Maximum price (e.g. 200)"
     )
 
-    # ntfy setup
-    parser.add_argument("--ntfy-server", dest="ntfy_server", help="Set ntfy server URL")
-    parser.add_argument(
-        "--ntfy-topic", dest="ntfy_topic", help="Set ntfy topic for notifications"
+    # Delete
+    p_del = sub.add_parser("delete", help="Delete a search")
+    p_del.add_argument("name", help="Name of the search to delete")
+
+    # List
+    p_list = sub.add_parser("list", help="List active searches")
+    p_list.add_argument(
+        "--short",
+        dest="short",
+        action="store_true",
+        help="Compact output",
     )
+    p_list.set_defaults(short=False)
+
+    # Migrate
+    sub.add_parser(
+        "migrate",
+        help="Migrate searches.tracked from old nested format to the new format",
+    )
+
+    # Setup
+    p_setup = sub.add_parser("setup", help="Configure notification channels")
+
+    tg = p_setup.add_argument_group("telegram")
+    tg.add_argument("--telegram-token", dest="token", help="Telegram bot API token")
+    tg.add_argument("--telegram-chat-id", dest="chatid", help="Telegram chat id")
+
+    ntfy = p_setup.add_argument_group("ntfy")
+    ntfy.add_argument("--ntfy-server", dest="ntfy_server", help="ntfy server URL")
+    ntfy.add_argument("--ntfy-topic", dest="ntfy_topic", help="ntfy topic")
 
     return parser

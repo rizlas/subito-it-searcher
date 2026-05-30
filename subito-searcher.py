@@ -1,14 +1,8 @@
 #!/usr/bin/env python3
 """Entry point: parse args, load state, dispatch.
 
-Run modes:
-  --refresh   run all searches once and exit
-  --daemon    poll on a timer forever (use --delay, --active-hour, --pause-hour)
-  --bot       interactive Telegram bot daemon (see subito/bot.py)
-  --migrate   convert searches.tracked from old nested format to new flat format,
-              run once after upgrading from a previous version
-
 Nothing else lives here. All logic is in the subito/ package.
+Run with --help to see all options.
 """
 
 from datetime import datetime, time
@@ -50,53 +44,65 @@ def main() -> None:
         win_notifyoff=args.win_notifyoff,
     )
 
-    # --- Migration ---
-    if args.migrate:
-        migrated = storage.migrate_queries(queries)
-        storage.save_queries(migrated)
-        logger.info(f"Migrated {len(migrated)} search(es). File updated.")
-        return
+    active_hour = args.active_hour or 0
+    pause_hour = args.pause_hour or 0
 
-    # --- Display ---
-    if args.list:
-        q.print_queries(queries)
+    # --- Subcommands ---
 
-    if args.short_list:
-        q.print_sitrep(queries)
-
-    # --- Search management ---
-    if args.url is not None and args.name is not None:
+    if args.command == "add":
         q.add(queries, args.url, args.name, args.min_price, args.max_price)
         scraper.run_query(
             args.name, queries[args.name], False, queries, cfg, credentials, ntfy_config
         )
-        logger.info(f"Query '{args.name}' added.")
+        storage.save_queries(queries)
+        logger.info(f"Search '{args.name}' added.")
+        return
 
-    if args.delete is not None:
-        q.delete(queries, args.delete)
-        logger.info(f"Query '{args.delete}' deleted.")
+    if args.command == "delete":
+        q.delete(queries, args.name)
+        storage.save_queries(queries)
+        logger.info(f"Search '{args.name}' deleted.")
+        return
 
-    # --- Credential / config setup ---
-    if args.token is not None and args.chatid is not None:
-        credentials["token"] = args.token
-        credentials["chatid"] = args.chatid
-        storage.save_api_credentials(credentials)
-        logger.info("Telegram credentials saved.")
+    if args.command == "list":
+        if args.short:
+            q.print_sitrep(queries)
+        else:
+            q.print_queries(queries)
+        return
 
-    if args.ntfy_server is not None and args.ntfy_topic is not None:
-        ntfy_config["ntfy_server"] = args.ntfy_server
-        ntfy_config["ntfy_topic"] = args.ntfy_topic
-        storage.save_ntfy_config(ntfy_config)
-        logger.info("ntfy config saved.")
+    if args.command == "migrate":
+        confirm = input(
+            f"Migrate {len(queries)} search(es) to the new format? This will "
+            f"overwrite searches.tracked. [y/N] "
+        )
+        if confirm.strip().lower() != "y":
+            logger.info("Migration cancelled.")
+            return
+        migrated = storage.migrate_queries(queries)
+        storage.save_queries(migrated)
+        logger.info(f"Migrated {len(migrated)} search(es).")
+        return
+
+    if args.command == "setup":
+        if args.token and args.chatid:
+            credentials["token"] = args.token
+            credentials["chatid"] = args.chatid
+            storage.save_api_credentials(credentials)
+            logger.info("Telegram credentials saved.")
+        if args.ntfy_server and args.ntfy_topic:
+            ntfy_config["ntfy_server"] = args.ntfy_server
+            ntfy_config["ntfy_topic"] = args.ntfy_topic
+            storage.save_ntfy_config(ntfy_config)
+            logger.info("ntfy config saved.")
+        return
 
     # --- Run modes ---
-    active_hour = int(args.active_hour) if args.active_hour is not None else 0
-    pause_hour = int(args.pause_hour) if args.pause_hour is not None else 0
 
     if args.refresh:
         scraper.refresh(queries, True, cfg, credentials, ntfy_config)
-
-    storage.save_queries(queries)
+        storage.save_queries(queries)
+        return
 
     if args.bot:
         from subito.bot import run_bot
@@ -106,21 +112,21 @@ def main() -> None:
             credentials=credentials,
             ntfy_config=ntfy_config,
             cfg=cfg,
-            delay=int(args.delay),
+            delay=args.delay,
             active_hour=active_hour,
             pause_hour=pause_hour,
         )
         return
 
-    if args.daemon:
-        notify = False
-        while True:
-            if _in_between(datetime.now().time(), time(active_hour), time(pause_hour)):
-                scraper.refresh(queries, notify, cfg, credentials, ntfy_config)
-                notify = True
-                logger.info(f"Next poll in {args.delay} seconds.")
-                storage.save_queries(queries)
-            t.sleep(int(args.delay))
+    # Default: polling loop
+    notify = False
+    while True:
+        if _in_between(datetime.now().time(), time(active_hour), time(pause_hour)):
+            scraper.refresh(queries, notify, cfg, credentials, ntfy_config)
+            notify = True
+            logger.info(f"Next poll in {args.delay} seconds.")
+            storage.save_queries(queries)
+        t.sleep(args.delay)
 
 
 if __name__ == "__main__":
