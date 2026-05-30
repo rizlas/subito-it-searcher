@@ -43,7 +43,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "👋 *Subito Searcher Bot*\n\n"
         "Available commands:\n"
         "/list - show active searches\n"
-        "/add `<name> <url> [min] [max]` - add a search\n"
+        "/add `<name> <url> [min_price] [max_price] [tuttosubito]` - add a search\n"
         "/delete `<name>` - remove a search\n"
         "/refresh - run all searches now\n"
         "/status - show daemon state\n"
@@ -66,7 +66,7 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     args = context.args
     if len(args) < 2:
         await update.message.reply_text(
-            "Usage: /add `<name> <url> [minPrice] [maxPrice]`",
+            "Usage: /add `<name> <url> [min_price] [max_price] [tuttosubito]`",
             parse_mode=ParseMode.MARKDOWN,
         )
         return
@@ -74,10 +74,13 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     state = context.application.bot_data
     name = args[0]
     url = args[1]
-    min_price = args[2] if len(args) > 2 else None
-    max_price = args[3] if len(args) > 3 else None
+    extra = args[2:]
+    tuttosubito_only = "tuttosubito" in extra
+    prices = [a for a in extra if a != "tuttosubito"]
+    min_price = prices[0] if len(prices) > 0 else None
+    max_price = prices[1] if len(prices) > 1 else None
 
-    q.add(state["queries"], url, name, min_price, max_price)
+    q.add(state["queries"], url, name, min_price, max_price, tuttosubito_only=tuttosubito_only)
     scraper.run_query(
         name,
         state["queries"][name],
