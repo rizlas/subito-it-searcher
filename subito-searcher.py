@@ -92,9 +92,9 @@ def main() -> None:
 
     if args.command == "list":
         if args.short:
-            q.print_sitrep(queries)
+            q.print_list_short(queries)
         else:
-            q.print_queries(queries)
+            q.print_list(queries)
         return
 
     if args.command == "migrate":

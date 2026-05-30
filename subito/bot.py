@@ -21,7 +21,6 @@ in daemon mode).
 
 import asyncio
 from datetime import datetime, time
-import io
 import logging
 
 from telegram import Update
@@ -35,19 +34,8 @@ from subito.config import AppConfig
 logger = logging.getLogger(__name__)
 
 
-def _sitrep_text(queries: dict) -> str:
-    buf = io.StringIO()
-    for i, (name, search) in enumerate(queries.items(), 1):
-        buf.write(f"\n{i}) *{name}*\n")
-        buf.write(f"  url: {search['url']}\n")
-        parts = []
-        if search["min_price"] is not None:
-            parts.append(f"min €{search['min_price']}")
-        if search["max_price"] is not None:
-            parts.append(f"max €{search['max_price']}")
-        if parts:
-            buf.write(f"  price: {', '.join(parts)}\n")
-    return buf.getvalue() or "No active searches."
+def _searches_text(queries: dict) -> str:
+    return q.format_searches(queries, bold=True) or "No active searches."
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -70,7 +58,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     state = context.application.bot_data
-    text = _sitrep_text(state["queries"])
+    text = _searches_text(state["queries"])
     await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
 
 
