@@ -7,6 +7,7 @@ Run with --help to see all options.
 
 from datetime import datetime, time
 import logging
+import logging.handlers
 import os
 import time as t
 
@@ -14,7 +15,7 @@ from subito import queries as q
 from subito import scraper, storage
 from subito.bot import run_bot
 from subito.cli import build_parser
-from subito.config import AppConfig
+from subito.config import DATA_DIR, AppConfig
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,20 @@ def main() -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
+    file_handler = logging.handlers.RotatingFileHandler(
+        os.path.join(DATA_DIR, "errors.log"),
+        maxBytes=1_000_000,
+        backupCount=3,
+    )
+    file_handler.setLevel(logging.WARNING)
+    file_handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s %(levelname)-8s %(name)s - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    )
+    logging.getLogger().addHandler(file_handler)
+
     queries = storage.load_queries()
     credentials = storage.load_api_credentials()
     ntfy_config = storage.load_ntfy_config()
@@ -54,7 +69,15 @@ def main() -> None:
     # Subcommands
 
     if args.command == "add":
-        q.add(queries, args.url, args.name, args.min_price, args.max_price)
+        q.add(
+            queries,
+            args.url,
+            args.name,
+            args.min_price,
+            args.max_price,
+            shipping_only=args.shipping_only,
+            tuttosubito_only=args.tuttosubito_only,
+        )
         scraper.run_query(
             args.name, queries[args.name], False, queries, cfg, credentials, ntfy_config
         )

@@ -90,6 +90,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_add.add_argument(
         "--max-price", dest="max_price", type=int, help="Maximum price (e.g. 200)"
     )
+    p_add.add_argument(
+        "--shipping",
+        dest="shipping_only",
+        action="store_true",
+        help="Only track items that have shipping available",
+    )
+    p_add.set_defaults(shipping_only=False)
+    p_add.add_argument(
+        "--tuttosubito",
+        dest="tuttosubito_only",
+        action="store_true",
+        help="Only track items shipped via TuttoSubito (verified dealer + buyer protection)",
+    )
+    p_add.set_defaults(tuttosubito_only=False)
 
     # Delete
     p_del = sub.add_parser("delete", help="Delete a search")

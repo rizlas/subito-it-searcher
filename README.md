@@ -86,9 +86,10 @@ python3 subito-searcher.py <subcommand> --help
 ### Manage searches
 
 ```bash
-# Add a search (--min-price and --max-price are optional)
+# Add a search (all filters optional)
 python3 subito-searcher.py add Auto "https://www.subito.it/annunci-italia/vendita/usato/?q=auto"
 python3 subito-searcher.py add Iphone "https://www.subito.it/annunci-italia/vendita/usato/?q=iphone" --min-price 50 --max-price 300
+python3 subito-searcher.py add Iphone "https://www.subito.it/annunci-italia/vendita/usato/?q=iphone" --tuttosubito
 
 # Remove a search
 python3 subito-searcher.py delete Auto
@@ -160,6 +161,11 @@ data/                   # State files, gitignored, Docker volume
   telegram.json
   ntfy.json
 ```
+
+## Logs
+
+Warnings and errors are written to `data/errors.log` (rotating, 1 MB max, 3 backups).
+Check this file if searches stop returning results or items are being silently skipped.
 
 ## Troubleshooting
 

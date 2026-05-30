@@ -24,11 +24,23 @@ def print_sitrep(queries: dict) -> None:
             parts.append(f"min €{search['min_price']}")
         if search["max_price"] is not None:
             parts.append(f"max €{search['max_price']}")
-        price_str = f"  price: {', '.join(parts)}" if parts else ""
+        if search.get("shipping_only"):
+            parts.append("shipping")
+        if search.get("tuttosubito_only"):
+            parts.append("tuttosubito")
+        price_str = f"  filters: {', '.join(parts)}" if parts else ""
         print(f"\n{i}) {name}  {search['url']}{price_str}\n")
 
 
-def add(queries: dict, url: str, name: str, min_price, max_price) -> None:
+def add(
+    queries: dict,
+    url: str,
+    name: str,
+    min_price,
+    max_price,
+    shipping_only: bool = False,
+    tuttosubito_only: bool = False,
+) -> None:
     def _to_int(v):
         if v is None or v == "null":
             return None
@@ -38,6 +50,8 @@ def add(queries: dict, url: str, name: str, min_price, max_price) -> None:
         "url": url,
         "min_price": _to_int(min_price),
         "max_price": _to_int(max_price),
+        "shipping_only": shipping_only,
+        "tuttosubito_only": tuttosubito_only,
         "items": {},
     }
 

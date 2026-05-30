@@ -13,6 +13,12 @@ with network error handling wrapped around the whole loop.
 
 HEADERS at the top is the browser impersonation block. Do not change it
 unless the site starts blocking requests.
+
+Extracted fields per item:
+  title, link, date, location, price
+  shipping        bool  /item_shippable key "1"
+  tuttosubito     bool  /item_shipping_type == "Spedizione con TuttoSubito"
+  verified_dealer bool  proTransactionsEnabled + tuttosubito
 """
 
 from datetime import datetime
@@ -51,7 +57,6 @@ HEADERS = {
     "User-Agent": '"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"',  # noqa: E501
 }
 
-
 def run_query(
     name: str,
     search: dict,
@@ -69,6 +74,8 @@ def run_query(
     url = search["url"]
     min_price = search["min_price"]  # int or None
     max_price = search["max_price"]  # int or None
+    shipping_only = search.get("shipping_only", False)
+    tuttosubito_only = search.get("tuttosubito_only", False)
     items = search["items"]
 
     logger.info(f'Running query "{name}" - {url}')
@@ -111,6 +118,7 @@ def run_query(
                 )
             except ValueError:
                 date = raw_date
+
             location = (
                 product.get("geo", {}).get("town", {}).get("value", "Unknown town")
                 + " ("
@@ -133,16 +141,31 @@ def run_query(
                 except ValueError:
                     pass
 
-            shipping = None
-            shipping_feature = features.get("/item_shippable")
-            if shipping_feature:
-                raw_shipping = shipping_feature["values"][0].get("value")
-                if raw_shipping:
-                    shipping = "(Shipping available)"
+            # Shipping
+            shippable_feature = features.get("/item_shippable")
+            shipping = (
+                shippable_feature is not None
+                and shippable_feature.get("values", [{}])[0].get("key") == "1"
+            )
+
+            # TuttoSubito: shipping handled by subito.it (buyer protection)
+            shipping_type = (
+                features.get("/item_shipping_type", {})
+                .get("values", [{}])[0]
+                .get("value", "")
+            )
+            tuttosubito = shipping_type == "Spedizione con TuttoSubito"
+
+            # Verified dealer: registered shop + TuttoSubito transaction
+            advertiser = product.get("advertiser", {})
+            verified_dealer = (
+                advertiser.get("proTransactionsEnabled") is True and tuttosubito
+            )
 
             is_sold = product.get("sold", False)
 
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Skipped item in '{name}': {e}")
             continue
 
         # Remove sold items from cache
@@ -151,25 +174,42 @@ def run_query(
                 del items[link]
             continue
 
-        # Price filter
-        if min_price is None or price == "Unknown price" or price >= min_price:
-            if max_price is None or price == "Unknown price" or price <= max_price:
-                if link not in items:
-                    tmp = (
-                        f"{date}\n"
-                        f"*{title}*\n"
-                        f"€ {price} {shipping}\n"
-                        f"{location}\n"
-                        f"{link}\n"
-                    )
-                    msg.append(tmp)
-                    items[link] = {
-                        "title": title,
-                        "price": price,
-                        "location": location,
-                        "date": date,
-                    }
-                    logger.debug(f"New result: {title} - {price} - {location}")
+        # Filters
+        if shipping_only and not shipping:
+            continue
+        if tuttosubito_only and not tuttosubito:
+            continue
+        if min_price is not None and price != "Unknown price" and price < min_price:
+            continue
+        if max_price is not None and price != "Unknown price" and price > max_price:
+            continue
+
+        if link not in items:
+            badges = []
+            if tuttosubito:
+                badges.append("TuttoSubito")
+            if verified_dealer:
+                badges.append("Rivenditore verificato")
+            badge_str = f" [{', '.join(badges)}]" if badges else ""
+
+            tmp = (
+                f"{date}\n"
+                f"*{title}*\n"
+                f"€ {price}{badge_str}\n"
+                f"{location}\n"
+                f"{link}\n"
+            )
+            msg.append(tmp)
+            items[link] = {
+                "title": title,
+                "price": price,
+                "location": location,
+                "date": date,
+                "shipping": shipping,
+                "tuttosubito": tuttosubito,
+                "verified_dealer": verified_dealer,
+            }
+            logger.debug(f"New result: {title} - {price} - {location}")
 
     # Notify and report
     if msg:
