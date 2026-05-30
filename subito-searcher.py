@@ -7,6 +7,7 @@ Run with --help to see all options.
 
 from datetime import datetime, time
 import logging
+import os
 import time as t
 
 from subito import queries as q
@@ -44,8 +45,10 @@ def main() -> None:
         win_notifyoff=args.win_notifyoff,
     )
 
-    active_hour = args.active_hour or 0
-    pause_hour = args.pause_hour or 0
+    # Priority: CLI flag > env var > default
+    delay = args.delay or int(os.environ.get("DELAY", 120))
+    active_hour = args.active_hour or int(os.environ.get("ACTIVE_HOUR", 0))
+    pause_hour = args.pause_hour or int(os.environ.get("PAUSE_HOUR", 0))
 
     # --- Subcommands ---
 
@@ -73,12 +76,16 @@ def main() -> None:
 
     if args.command == "migrate":
         confirm = input(
-            f"Migrate {len(queries)} search(es) to the new format? This will "
-            f"overwrite searches.tracked. [y/N] "
+            "Migrate data files and search format? This will rename files and "
+            "overwrite searches.json. [Y/n] "
         )
-        if confirm.strip().lower() != "y":
+        if confirm.strip() != "Y":
             logger.info("Migration cancelled.")
             return
+        renamed = storage.migrate_files()
+        for r in renamed:
+            logger.info(f"Renamed: {r}")
+        queries = storage.load_queries()
         migrated = storage.migrate_queries(queries)
         storage.save_queries(migrated)
         logger.info(f"Migrated {len(migrated)} search(es).")
@@ -112,7 +119,7 @@ def main() -> None:
             credentials=credentials,
             ntfy_config=ntfy_config,
             cfg=cfg,
-            delay=args.delay,
+            delay=delay,
             active_hour=active_hour,
             pause_hour=pause_hour,
         )
@@ -124,9 +131,9 @@ def main() -> None:
         if _in_between(datetime.now().time(), time(active_hour), time(pause_hour)):
             scraper.refresh(queries, notify, cfg, credentials, ntfy_config)
             notify = True
-            logger.info(f"Next poll in {args.delay} seconds.")
+            logger.info(f"Next poll in {delay} seconds.")
             storage.save_queries(queries)
-        t.sleep(args.delay)
+        t.sleep(delay)
 
 
 if __name__ == "__main__":

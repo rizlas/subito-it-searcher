@@ -1,20 +1,24 @@
 """Persistence layer: load and save the three JSON state files.
 
 Three files in data/:
-  searches.tracked          all saved searches + found items
-  telegram_api_credentials  bot token + chat id
-  ntfy_config               server URL + topic
+  searches.json   all saved searches + found items
+  telegram.json   bot token + chat id
+  ntfy.json       server URL + topic
 
 All load functions return an empty dict when the file does not exist yet.
 All save functions overwrite the file completely (no merging).
 migrate_queries() converts the old nested format to the current flat format.
 Run once via --migrate after upgrading from the previous version.
+
+Environment variables override file values (env > file > default):
+  TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
+  NTFY_SERVER, NTFY_TOPIC
 """
 
 import json
 import os
 
-from subito.config import DB_FILE, NTFY_FILE, TG_CREDS_FILE
+from subito.config import DATA_DIR, DB_FILE, NTFY_FILE, TG_CREDS_FILE
 
 
 def load_queries() -> dict:
@@ -30,10 +34,15 @@ def save_queries(queries: dict) -> None:
 
 
 def load_api_credentials() -> dict:
-    if not os.path.isfile(TG_CREDS_FILE):
-        return {}
-    with open(TG_CREDS_FILE) as f:
-        return json.load(f)
+    creds = {}
+    if os.path.isfile(TG_CREDS_FILE):
+        with open(TG_CREDS_FILE) as f:
+            creds = json.load(f)
+    if token := os.environ.get("TELEGRAM_TOKEN"):
+        creds["token"] = token
+    if chatid := os.environ.get("TELEGRAM_CHAT_ID"):
+        creds["chatid"] = chatid
+    return creds
 
 
 def save_api_credentials(credentials: dict) -> None:
@@ -42,15 +51,44 @@ def save_api_credentials(credentials: dict) -> None:
 
 
 def load_ntfy_config() -> dict:
-    if not os.path.isfile(NTFY_FILE):
-        return {}
-    with open(NTFY_FILE) as f:
-        return json.load(f)
+    cfg = {}
+    if os.path.isfile(NTFY_FILE):
+        with open(NTFY_FILE) as f:
+            cfg = json.load(f)
+    if server := os.environ.get("NTFY_SERVER"):
+        cfg["ntfy_server"] = server
+    if topic := os.environ.get("NTFY_TOPIC"):
+        cfg["ntfy_topic"] = topic
+    return cfg
 
 
 def save_ntfy_config(config: dict) -> None:
     with open(NTFY_FILE, "w") as f:
         f.write(json.dumps(config))
+
+
+def migrate_files() -> list[str]:
+    """Rename data files from the old naming convention to the new .json names.
+
+    Old names: searches.tracked, telegram_api_credentials, ntfy_config
+    New names: searches.json, telegram.json, ntfy.json
+
+    Returns a list of rename descriptions for logging.
+    Skips a rename if the destination already exists.
+    """
+    renames = [
+        ("searches.tracked", "searches.json"),
+        ("telegram_api_credentials", "telegram.json"),
+        ("ntfy_config", "ntfy.json"),
+    ]
+    done = []
+    for old_name, new_name in renames:
+        old_path = os.path.join(DATA_DIR, old_name)
+        new_path = os.path.join(DATA_DIR, new_name)
+        if os.path.isfile(old_path) and not os.path.isfile(new_path):
+            os.rename(old_path, new_path)
+            done.append(f"{old_name} -> {new_name}")
+    return done
 
 
 def migrate_queries(old: dict) -> dict:

@@ -34,7 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--delay",
         dest="delay",
-        default=120,
+        default=None,
         type=int,
         help="Polling interval in seconds (default: 120)",
     )

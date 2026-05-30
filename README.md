@@ -41,6 +41,20 @@ python3 subito-searcher.py setup --ntfy-server https://ntfy.sh --ntfy-topic your
 
 Telegram and ntfy are independent. If both are configured, new items are sent to both.
 
+### Environment variables
+
+All credentials and run parameters can be set via environment variables. Env vars take priority over config files.
+
+|      Variable      |                Description                 |
+| ------------------ | ------------------------------------------ |
+| `TELEGRAM_TOKEN`   | Telegram bot API token                     |
+| `TELEGRAM_CHAT_ID` | Telegram chat id                           |
+| `NTFY_SERVER`      | ntfy server URL                            |
+| `NTFY_TOPIC`       | ntfy topic                                 |
+| `DELAY`            | Polling interval in seconds (default: 120) |
+| `ACTIVE_HOUR`      | Hour when to start polling in 24h notation |
+| `PAUSE_HOUR`       | Hour when to stop polling in 24h notation  |
+
 ### Docker
 
 ```bash
@@ -56,6 +70,9 @@ services:
     build: .
     volumes:
       - ./data:/app/data
+    environment:
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
     command: <flags>
 ```
 
@@ -139,9 +156,9 @@ subito/
   cli.py                # Subcommands and flags
   config.py             # Paths and AppConfig dataclass
 data/                   # State files, gitignored, Docker volume
-  searches.tracked
-  telegram_api_credentials
-  ntfy_config
+  searches.json
+  telegram.json
+  ntfy.json
 ```
 
 ## Troubleshooting
