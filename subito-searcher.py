@@ -1,624 +1,127 @@
-#!/usr/bin/env python3.7
+#!/usr/bin/env python3
+"""Entry point: parse args, load state, dispatch.
 
-import argparse
-import requests
-from bs4 import BeautifulSoup
-import json
-import os
-import platform
-import time as t
+Run modes:
+  --refresh   run all searches once and exit
+  --daemon    poll on a timer forever (use --delay, --active-hour, --pause-hour)
+  --bot       interactive Telegram bot daemon (see subito/bot.py)
+  --migrate   convert searches.tracked from old nested format to new flat format,
+              run once after upgrading from a previous version
+
+Nothing else lives here. All logic is in the subito/ package.
+"""
+
 from datetime import datetime, time
+import logging
+import time as t
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--add", dest="name", help="name of new tracking to be added")
-parser.add_argument("--url", help="url for your new tracking's search query")
-parser.add_argument("--minPrice", help="minimum price for the query")
-parser.add_argument("--maxPrice", help="maximum price for the query")
-parser.add_argument("--delete", help="name of the search you want to delete")
-parser.add_argument(
-    "--refresh",
-    "-r",
-    dest="refresh",
-    action="store_true",
-    help="refresh search results once",
-)
-parser.set_defaults(refresh=False)
-parser.add_argument(
-    "--daemon",
-    "-d",
-    dest="daemon",
-    action="store_true",
-    help="keep refreshing search results forever (default delay 120 seconds)",
-)
-parser.set_defaults(daemon=False)
-parser.add_argument(
-    "--activeHour",
-    "-ah",
-    dest="activeHour",
-    help="Time slot. Hour when to be active in 24h notation",
-)
-parser.add_argument(
-    "--pauseHour",
-    "-ph",
-    dest="pauseHour",
-    help="Time slot. Hour when to pause in 24h notation",
-)
-parser.add_argument(
-    "--delay", dest="delay", help="delay for the daemon option (in seconds)"
-)
-parser.set_defaults(delay=120)
-parser.add_argument(
-    "--list", dest="list", action="store_true", help="print a list of current trackings"
-)
-parser.set_defaults(list=False)
-parser.add_argument(
-    "--short_list",
-    dest="short_list",
-    action="store_true",
-    help="print a more compact list",
-)
-parser.set_defaults(short_list=False)
-parser.add_argument(
-    "--tgoff", dest="tgoff", action="store_true", help="turn off telegram messages"
-)
-parser.set_defaults(tgoff=False)
-parser.add_argument(
-    "--notifyoff",
-    dest="win_notifyoff",
-    action="store_true",
-    help="turn off windows notifications",
-)
-parser.set_defaults(win_notifyoff=False)
-parser.add_argument(
-    "--addtoken", dest="token", help="telegram setup: add bot API token"
-)
-parser.add_argument(
-    "--addchatid", dest="chatid", help="telegram setup: add bot chat id"
-)
-parser.add_argument("--ntfy_server", dest="ntfy_server", help="Set ntfy server URL")
-parser.add_argument(
-    "--ntfy_topic", dest="ntfy_topic", help="Set ntfy topic for notifications"
-)
-parser.add_argument(
-    "--ntfyoff", dest="ntfyoff", action="store_true", help="Turn off ntfy notifications"
-)
-parser.set_defaults(ntfyoff=False)
+from subito import queries as q
+from subito import scraper, storage
+from subito.cli import build_parser
+from subito.config import AppConfig
 
-args = parser.parse_args()
+logger = logging.getLogger(__name__)
 
-queries = dict()
-apiCredentials = dict()
-ntfyConfig = dict()
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-os.makedirs(DATA_DIR, exist_ok=True)
-
-ntfyConfigFile = os.path.join(DATA_DIR, "ntfy_config")
-dbFile = os.path.join(DATA_DIR, "searches.tracked")
-telegramApiFile = os.path.join(DATA_DIR, "telegram_api_credentials")
-
-# Windows notifications
-if platform.system() == "Windows":
-    from win10toast import ToastNotifier
-
-    toaster = ToastNotifier()
-
-
-# load from file
-def load_queries():
-    """A function to load the queries from the json file"""
-    global queries
-    global dbFile
-    if not os.path.isfile(dbFile):
-        return
-
-    with open(dbFile) as file:
-        queries = json.load(file)
-
-
-def load_api_credentials():
-    """A function to load the telegram api credentials from the json file"""
-    global apiCredentials
-    global telegramApiFile
-    if not os.path.isfile(telegramApiFile):
-        return
-
-    with open(telegramApiFile) as file:
-        apiCredentials = json.load(file)
-
-
-def load_ntfy_config():
-    """A function to load the ntfy config from the json file"""
-    global ntfyConfig
-    global ntfyConfigFile
-    if not os.path.isfile(ntfyConfigFile):
-        return
-
-    with open(ntfyConfigFile) as file:
-        ntfyConfig = json.load(file)
-
-
-def print_queries():
-    """A function to print the queries"""
-    global queries
-    # print(queries, "\n\n")
-
-    for search in queries.items():
-        print("\nsearch: ", search[0])
-        for query_url in search[1]:
-            print("query url:", query_url)
-            for url in search[1].items():
-                for minP in url[1].items():
-                    for maxP in minP[1].items():
-                        for result in maxP[1].items():
-                            print(
-                                "\n",
-                                result[1].get("title"),
-                                ":",
-                                result[1].get("price"),
-                                "-->",
-                                result[1].get("location"),
-                            )
-                            print(" ", result[0])
-
-
-# printing a compact list of trackings
-def print_sitrep():
-    """A function to print a compact list of trackings"""
-    global queries
-    i = 1
-    for search in queries.items():
-        print("\n{}) search: {}".format(i, search[0]))
-        for query_url in search[1].items():
-            for minP in query_url[1].items():
-                for maxP in minP[1].items():
-                    print("query url:", query_url[0], " ", end="")
-                    if minP[0] != "null":
-                        print(minP[0], "<", end="")
-                    if minP[0] != "null" or maxP[0] != "null":
-                        print(" price ", end="")
-                    if maxP[0] != "null":
-                        print("<", maxP[0], end="")
-                    print("\n")
-
-        i += 1
-
-
-def refresh(notify):
-    """A function to refresh the queries
-
-    Arguments
-    ---------
-    notify: bool
-        whether to send notifications or not
-
-    Example usage
-    -------------
-    >>> refresh(True)   # Refresh queries and send notifications
-    >>> refresh(False)  # Refresh queries and don't send notifications
-    """
-    global queries
-    try:
-        for search in queries.items():
-            for url in search[1].items():
-                for minP in url[1].items():
-                    for maxP in minP[1].items():
-                        run_query(url[0], search[0], notify, minP[0], maxP[0])
-    except requests.exceptions.ConnectionError:
-        print(datetime.now().strftime("%Y-%m-%d, %H:%M:%S") + " ***Connection error***")
-    except requests.exceptions.Timeout:
-        print(
-            datetime.now().strftime("%Y-%m-%d, %H:%M:%S")
-            + " ***Server timeout error***"
-        )
-    except requests.exceptions.HTTPError:
-        print(datetime.now().strftime("%Y-%m-%d, %H:%M:%S") + " ***HTTP error***")
-    except Exception as e:
-        print(datetime.now().strftime("%Y-%m-%d, %H:%M:%S") + " " + e)
-
-
-def delete(toDelete):
-    """A function to delete a query
-
-    Arguments
-    ---------
-    toDelete: str
-        the query to delete
-
-    Example usage
-    -------------
-    >>> delete("query")
-    """
-    global queries
-    queries.pop(toDelete)
-
-
-def add(url, name, minPrice, maxPrice):
-    """A function to add a new query
-
-    Arguments
-    ---------
-    url: str
-        the url to run the query on
-    name: str
-        the name of the query
-    minPrice: str
-        the minimum price to search for
-    maxPrice: str
-        the maximum price to search for
-
-    Example usage
-    -------------
-    >>> add("https://www.subito.it/annunci-italia/vendita/usato/?q=auto", "auto", 100, "null")
-    """
-    global queries
-
-    # If the query has already been added previously, delete it
-    if queries.get(name):
-        delete(name)
-
-    queries[name] = {url: {minPrice: {maxPrice: {}}}}
-
-
-def run_query(url, name, notify, minPrice, maxPrice):
-    """A function to run a query
-
-    Arguments
-    ---------
-    url: str
-        the url to run the query on
-    name: str
-        the name of the query
-    notify: bool
-        whether to send notifications or not
-    minPrice: str
-        the minimum price to search for
-    maxPrice: str
-        the maximum price to search for
-
-    Example usage
-    -------------
-    >>> run_query("https://www.subito.it/annunci-italia/vendita/usato/?q=auto", "query", True, 100, "null")
-    """
-    print(
-        datetime.now().strftime("%Y-%m-%d, %H:%M:%S")
-        + ' running query ("{}" - {})...'.format(name, url)
-    )
-
-    products_deleted = False
-
-    global queries
-    headers = {
-        "Accept": '"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"',
-        "Accept-Encoding": '"gzip, deflate"',
-        "Accept-Language": '"en-US,en;q=0.5"',
-        "Connection": '"keep-alive"',
-        "Sec-Ch-Ua": '"Chromium";v="128", "Not;A=Brand";v="24", "Brave";v="128"',
-        "Sec-Ch-Ua-Mobile": '"?0"',
-        "Sec-Ch-Ua-Platform": '"Windows"',
-        "Sec-Fetch-Dest": '"document"',
-        "Sec-Fetch-Mode": '"navigate"',
-        "Sec-Fetch-Site": '"none"',
-        "Sec-Fetch-User": '"?1"',
-        "Sec-Gpc": '"1"',
-        "Upgrade-Insecure-Requests": '"1"',
-        "User-Agent": '"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"',
-    }
-
-    page = requests.get(url, headers=headers)
-    soup = BeautifulSoup(page.text, "html.parser")
-
-    script_tag = soup.find("script", id="__NEXT_DATA__")
-    if not script_tag:
-        print("Error: Could not find JSON data on page (Next.js data not found).")
-        return
-
-    json_data = json.loads(script_tag.string)
-
-    try:
-        items_list = json_data["props"]["pageProps"]["initialState"]["items"]["list"]
-    except KeyError:
-        items_list = []
-
-    msg = []
-
-    for item_wrapper in items_list:
-        product = item_wrapper.get("item")
-
-        if not product:
-            continue
-
-        try:
-            item_key = product.get("urn")
-            if not item_key:
-                continue
-
-            title = product.get("subject", "No Title")
-            link = product.get("urls", {}).get("default", "")
-            location = (
-                product.get("geo", {}).get("town", {}).get("value", "Unknown town")
-                + " ("
-                + product.get("geo", {})
-                .get("city", {})
-                .get("shortName", "Unknown province")
-                + ")"
-            )
-
-            # Price extraction
-            raw_price = None
-            price = "Unknown price"
-            features = product.get("features", {})
-            price_feature = features.get("/price")
-            if price_feature and "values" in price_feature:
-                raw_price = price_feature["values"][0].get("key")
-
-            if raw_price:
-                try:
-                    price = int(raw_price)
-                except ValueError:
-                    pass
-
-            # Shipping extraction
-            shipping = None
-            features = product.get("features", {})
-            shipping_feature = features.get("/item_shippable")
-            raw_shipping = shipping_feature["values"][0].get("value")
-
-            if raw_shipping:
-                try:
-                    shipping = "(Shipping available)"
-                except ValueError:
-                    pass
-
-            is_sold = product.get("sold", False)
-
-        except Exception as e:
-            continue
-
-        # check if the product has already been sold
-        if is_sold:
-            # if the product has previously been saved remove it from the file
-            if queries.get(name).get(url).get(minPrice).get(maxPrice).get(link):
-                del queries[name][url][minPrice][maxPrice][link]
-                products_deleted = True
-            continue
-
-        if minPrice == "null" or price == "Unknown price" or price >= int(minPrice):
-            if maxPrice == "null" or price == "Unknown price" or price <= int(maxPrice):
-                if (
-                    not queries.get(name).get(url).get(minPrice).get(maxPrice).get(link)
-                ):  # found a new element
-                    tmp = (
-                        datetime.now().strftime("%Y-%m-%d, %H:%M:%S")
-                        + "\n"
-                        + "*"
-                        + title
-                        + "*"
-                        + "\n"
-                        + "€ "
-                        + str(price)
-                        + " "
-                        + shipping
-                        + "\n"
-                        + location
-                        + "\n"
-                        + link
-                        + "\n"
-                    )
-                    msg.append(tmp)
-                    queries[name][url][minPrice][maxPrice][link] = {
-                        "title": title,
-                        "price": price,
-                        "location": location,
-                    }
-                    print(
-                        datetime.now().strftime("%Y-%m-%d, %H:%M:%S")
-                        + " Adding result:",
-                        title,
-                        "-",
-                        price,
-                        "-",
-                        location,
-                    )
-
-    if len(msg) > 0:
-        if notify:
-            # Windows only: send notification
-            if not args.win_notifyoff and platform.system() == "Windows":
-                global toaster
-                toaster.show_toast("New announcements", "Query: " + name)
-            if is_telegram_active():
-                send_telegram_messages(msg)
-            if is_ntfy_active():
-                send_ntfy_messages(msg)
-            print("\n".join(msg))
-            print("\n{} new elements have been found.".format(len(msg)))
-        save_queries()
-    else:
-        print("\nAll lists are already up to date.")
-
-        # if at least one search was deleted, update the search file
-        if products_deleted:
-            save_queries()
-
-
-def save_queries():
-    """A function to save the queries"""
-    with open(dbFile, "w") as file:
-        file.write(json.dumps(queries))
-
-
-def save_api_credentials():
-    """A function to save the telegram api credentials into the telegramApiFile"""
-    with open(telegramApiFile, "w") as file:
-        file.write(json.dumps(apiCredentials))
-
-
-def save_ntfy_config():
-    """A function to save the ntfy config into the ntfyConfigFile"""
-    with open(ntfyConfigFile, "w") as file:
-        file.write(json.dumps(ntfyConfig))
-
-
-def send_ntfy_messages(messages):
-    for msg in messages:
-        if (
-            not args.ntfyoff
-            and "ntfy_server" in ntfyConfig
-            and "ntfy_topic" in ntfyConfig
-        ):
-            url = f"{ntfyConfig['ntfy_server'].rstrip('/')}/{ntfyConfig['ntfy_topic']}"
-            try:
-                requests.post(url, data=msg.encode("utf-8"))
-            except Exception as e:
-                print(f"Failed to send ntfy notification: {e}")
-
-
-def is_ntfy_active():
-    """A function to check if ntfy is active, i.e. if the ntfy config is present and not disabled"""
-    return (
-        not args.ntfyoff and "ntfy_server" in ntfyConfig and "ntfy_topic" in ntfyConfig
-    )
-
-
-def is_telegram_active():
-    """A function to check if telegram is active, i.e. if the api credentials are present
-
-    Returns
-    -------
-    bool
-        True if telegram is active, False otherwise
-    """
-    return not args.tgoff and "chatid" in apiCredentials and "token" in apiCredentials
-
-
-def send_telegram_messages(messages):
-    """A function to send messages to telegram
-
-    Arguments
-    ---------
-    messages: list
-        the list of messages to send
-
-    Example usage
-    -------------
-    >>> send_telegram_messages(["message1", "message2"])
-    """
-    for msg in messages:
-        request_url = (
-            "https://api.telegram.org/bot"
-            + apiCredentials["token"]
-            + "/sendMessage?chat_id="
-            + apiCredentials["chatid"]
-            + "&parse_mode=markdown"
-            + "&text="
-            + msg
-        )
-        requests.get(request_url)
-
-
-def in_between(now, start, end):
-    """A function to check if a time is in between two other times
-
-    Arguments
-    ---------
-    now: datetime
-        the time to check
-    start: datetime
-        the start time
-    end: datetime
-        the end time
-
-    Example usage
-    -------------
-    >>> in_between(datetime.now(), datetime(2021, 5, 20, 0, 0, 0), datetime(2021, 5, 20, 23, 59, 59))
-    """
+def _in_between(now: time, start: time, end: time) -> bool:
     if start < end:
         return start <= now < end
     elif start == end:
         return True
-    else:  # over midnight e.g., 23:30-04:15
+    else:
         return start <= now or now < end
 
 
-if __name__ == "__main__":
+def main() -> None:
+    args = build_parser().parse_args()
 
-    ### Setup commands ###
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)-8s %(name)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
 
-    load_queries()
-    load_api_credentials()
-    load_ntfy_config()
+    queries = storage.load_queries()
+    credentials = storage.load_api_credentials()
+    ntfy_config = storage.load_ntfy_config()
+    cfg = AppConfig(
+        tgoff=args.tgoff,
+        ntfyoff=args.ntfyoff,
+        win_notifyoff=args.win_notifyoff,
+    )
 
+    # --- Migration ---
+    if args.migrate:
+        migrated = storage.migrate_queries(queries)
+        storage.save_queries(migrated)
+        logger.info(f"Migrated {len(migrated)} search(es). File updated.")
+        return
+
+    # --- Display ---
     if args.list:
-        print(
-            datetime.now().strftime("%Y-%m-%d, %H:%M:%S")
-            + " printing current status..."
-        )
-        print_queries()
+        q.print_queries(queries)
 
     if args.short_list:
-        print(
-            datetime.now().strftime("%Y-%m-%d, %H:%M:%S") + " printing quick sitrep..."
-        )
-        print_sitrep()
+        q.print_sitrep(queries)
 
+    # --- Search management ---
     if args.url is not None and args.name is not None:
-        add(
-            args.url,
-            args.name,
-            args.minPrice if args.minPrice is not None else "null",
-            args.maxPrice if args.maxPrice is not None else "null",
+        q.add(queries, args.url, args.name, args.min_price, args.max_price)
+        scraper.run_query(
+            args.name, queries[args.name], False, queries, cfg, credentials, ntfy_config
         )
-        run_query(
-            args.url,
-            args.name,
-            False,
-            args.minPrice if args.minPrice is not None else "null",
-            args.maxPrice if args.maxPrice is not None else "null",
-        )
-        print(datetime.now().strftime("%Y-%m-%d, %H:%M:%S") + " Query added.")
+        logger.info(f"Query '{args.name}' added.")
 
     if args.delete is not None:
-        delete(args.delete)
+        q.delete(queries, args.delete)
+        logger.info(f"Query '{args.delete}' deleted.")
 
-    if args.activeHour is None:
-        args.activeHour = "0"
-
-    if args.pauseHour is None:
-        args.pauseHour = "0"
-
-    # NTFY setup (save config if new args passed)
-    if args.ntfy_server is not None and args.ntfy_topic is not None:
-        ntfyConfig["ntfy_server"] = args.ntfy_server
-        ntfyConfig["ntfy_topic"] = args.ntfy_topic
-        save_ntfy_config()
-
-    # Telegram setup
-
+    # --- Credential / config setup ---
     if args.token is not None and args.chatid is not None:
-        apiCredentials["token"] = args.token
-        apiCredentials["chatid"] = args.chatid
-        save_api_credentials()
+        credentials["token"] = args.token
+        credentials["chatid"] = args.chatid
+        storage.save_api_credentials(credentials)
+        logger.info("Telegram credentials saved.")
 
-    ### Run commands ###
+    if args.ntfy_server is not None and args.ntfy_topic is not None:
+        ntfy_config["ntfy_server"] = args.ntfy_server
+        ntfy_config["ntfy_topic"] = args.ntfy_topic
+        storage.save_ntfy_config(ntfy_config)
+        logger.info("ntfy config saved.")
+
+    # --- Run modes ---
+    active_hour = int(args.active_hour) if args.active_hour is not None else 0
+    pause_hour = int(args.pause_hour) if args.pause_hour is not None else 0
 
     if args.refresh:
-        refresh(True)
+        scraper.refresh(queries, True, cfg, credentials, ntfy_config)
 
-    print()
-    save_queries()
+    storage.save_queries(queries)
+
+    if args.bot:
+        from subito.bot import run_bot
+
+        run_bot(
+            queries=queries,
+            credentials=credentials,
+            ntfy_config=ntfy_config,
+            cfg=cfg,
+            delay=int(args.delay),
+            active_hour=active_hour,
+            pause_hour=pause_hour,
+        )
+        return
 
     if args.daemon:
-        notify = False  # Don't flood with notifications the first time
+        notify = False
         while True:
-            if in_between(
-                datetime.now().time(),
-                time(int(args.activeHour)),
-                time(int(args.pauseHour)),
-            ):
-                refresh(notify)
+            if _in_between(datetime.now().time(), time(active_hour), time(pause_hour)):
+                scraper.refresh(queries, notify, cfg, credentials, ntfy_config)
                 notify = True
-                print()
-                print(str(args.delay) + " seconds to next poll.")
-                save_queries()
+                logger.info(f"Next poll in {args.delay} seconds.")
+                storage.save_queries(queries)
             t.sleep(int(args.delay))
+
+
+if __name__ == "__main__":
+    main()

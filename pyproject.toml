@@ -4,4 +4,14 @@ version = "1.0.0"
 description = "BeautifulSoup scraper running queries on a popular italian ad website."
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = ["bs4>=0.0.2", "requests>=2.32.5"]
+dependencies = [
+    "bs4>=0.0.2",
+    "python-telegram-bot==22.7",
+    "requests>=2.32.5",
+]
+
+[dependency-groups]
+dev = [
+    "black>=26.5.1",
+    "ruff>=0.15.15",
+]
