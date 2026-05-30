@@ -231,18 +231,10 @@ def refresh(
     cfg: AppConfig,
     credentials: dict,
     ntfy_config: dict,
-) -> list[str]:
-    """Run all searches and return collected new-item messages.
-
-    notify=True triggers push notifications (Telegram, ntfy, Windows).
-    notify=False silently caches new items and returns messages for the caller
-    to handle (e.g. bot mode sending via PTB).
-    """
-    all_msgs = []
+) -> None:
     try:
         for name, search in queries.items():
-            msgs = run_query(name, search, notify, queries, cfg, credentials, ntfy_config)
-            all_msgs.extend(msgs)
+            run_query(name, search, notify, queries, cfg, credentials, ntfy_config)
     except requests.exceptions.ConnectionError:
         logger.warning("Connection error")
     except requests.exceptions.Timeout:
@@ -251,4 +243,3 @@ def refresh(
         logger.warning("HTTP error")
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
-    return all_msgs

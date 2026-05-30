@@ -146,18 +146,15 @@ def main() -> None:
         )
         return
 
-    # Default: polling loop - scrape always, notify only within the active window
-    first_run_done = False
+    # Default: polling loop
+    notify = False
     try:
         while True:
-            in_window = _in_between(
-                datetime.now().time(), time(active_hour), time(pause_hour)
-            )
-            should_notify = first_run_done and in_window
-            scraper.refresh(queries, should_notify, cfg, credentials, ntfy_config)
-            first_run_done = True
-            logger.info(f"Next poll in {delay} seconds.")
-            storage.save_queries(queries)
+            if _in_between(datetime.now().time(), time(active_hour), time(pause_hour)):
+                scraper.refresh(queries, notify, cfg, credentials, ntfy_config)
+                notify = True
+                logger.info(f"Next poll in {delay} seconds.")
+                storage.save_queries(queries)
             t.sleep(delay)
     except KeyboardInterrupt:
         logger.info("Stopped.")
