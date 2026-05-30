@@ -43,7 +43,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "👋 *Subito Searcher Bot*\n\n"
         "Available commands:\n"
         "/list - show active searches\n"
-        "/add `<name> <url> [min_price] [max_price] [tuttosubito]` - add a search\n"
+        "/add `<name words> <url> [min] [max] [tuttosubito]` - add a search\n"
         "/delete `<name>` - remove a search\n"
         "/refresh - run all searches now\n"
         "/status - show daemon state\n"
@@ -64,17 +64,17 @@ async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     args = context.args
-    if len(args) < 2:
-        await update.message.reply_text(
-            "Usage: /add `<name> <url> [min_price] [max_price] [tuttosubito]`",
-            parse_mode=ParseMode.MARKDOWN,
-        )
+    usage = "Usage: /add `<name> <url> [min_price] [max_price] [tuttosubito]`"
+
+    url_idx = next((i for i, a in enumerate(args) if a.startswith("http")), None)
+    if url_idx is None or url_idx == 0:
+        await update.message.reply_text(usage, parse_mode=ParseMode.MARKDOWN)
         return
 
     state = context.application.bot_data
-    name = args[0]
-    url = args[1]
-    extra = args[2:]
+    name = " ".join(args[:url_idx])
+    url = args[url_idx]
+    extra = args[url_idx + 1:]
     tuttosubito_only = "tuttosubito" in extra
     prices = [a for a in extra if a != "tuttosubito"]
     min_price = prices[0] if len(prices) > 0 else None
