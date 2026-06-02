@@ -24,6 +24,7 @@ Extracted fields per item:
 from datetime import datetime
 import json
 import logging
+import time
 
 from bs4 import BeautifulSoup
 import requests
@@ -41,20 +42,19 @@ logger = logging.getLogger(__name__)
 
 # Browser-like headers to avoid bot detection on subito.it
 HEADERS = {
-    "Accept": '"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"',  # noqa: E501
-    "Accept-Encoding": '"gzip, deflate"',
-    "Accept-Language": '"en-US,en;q=0.5"',
-    "Connection": '"keep-alive"',
-    "Sec-Ch-Ua": '"Chromium";v="128", "Not;A=Brand";v="24", "Brave";v="128"',
-    "Sec-Ch-Ua-Mobile": '"?0"',
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",  # noqa: E501
+    "Accept-Encoding": "gzip, deflate, br",
+    "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Connection": "keep-alive",
+    "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+    "Sec-Ch-Ua-Mobile": "?0",
     "Sec-Ch-Ua-Platform": '"Windows"',
-    "Sec-Fetch-Dest": '"document"',
-    "Sec-Fetch-Mode": '"navigate"',
-    "Sec-Fetch-Site": '"none"',
-    "Sec-Fetch-User": '"?1"',
-    "Sec-Gpc": '"1"',
-    "Upgrade-Insecure-Requests": '"1"',
-    "User-Agent": '"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"',  # noqa: E501
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",  # noqa: E501
 }
 
 def run_query(
@@ -65,11 +65,12 @@ def run_query(
     cfg: AppConfig,
     credentials: dict,
     ntfy_config: dict,
-) -> list[str]:
+) -> list[str] | None:
     """Fetch one search page, diff against cache, return messages for new items.
 
     Mutates search['items'] in-place (adds new items, removes sold ones).
-    Returns a list of formatted message strings for each new item found.
+    Returns a list of formatted message strings for each new item found,
+    or None if an anti-bot challenge was detected (caller should abort the run).
     """
     url = search["url"]
     min_price = search["min_price"]  # int or None
@@ -83,6 +84,15 @@ def run_query(
 
     # Fetch and parse
     page = requests.get(url, headers=HEADERS)
+
+    if page.status_code == 403 or "captcha-delivery.com" in page.text:
+        logger.warning(
+            "Anti-bot challenge detected (DataDome/captcha). "
+            "Stop the script, wait a few hours, open subito.it in a browser and "
+            "solve any captcha, then restart."
+        )
+        return None
+
     soup = BeautifulSoup(page.text, "html.parser")
 
     script_tag = soup.find("script", id="__NEXT_DATA__")
@@ -233,8 +243,15 @@ def refresh(
     ntfy_config: dict,
 ) -> None:
     try:
-        for name, search in queries.items():
-            run_query(name, search, notify, queries, cfg, credentials, ntfy_config)
+        query_list = list(queries.items())
+        for i, (name, search) in enumerate(query_list):
+            result = run_query(name, search, notify, queries, cfg, credentials, ntfy_config)
+            if result is None:
+                logger.warning("Aborting refresh cycle to protect IP reputation.")
+                break
+            if i < len(query_list) - 1 and cfg.query_delay > 0:
+                logger.debug(f"Waiting {cfg.query_delay}s before next query.")
+                time.sleep(cfg.query_delay)
     except requests.exceptions.ConnectionError:
         logger.warning("Connection error")
     except requests.exceptions.Timeout:

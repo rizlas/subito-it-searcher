@@ -22,6 +22,7 @@ in daemon mode).
 import asyncio
 from datetime import datetime, time
 import logging
+import time as t
 
 from telegram import Update
 from telegram.constants import ParseMode
@@ -36,6 +37,28 @@ logger = logging.getLogger(__name__)
 
 def _searches_text(queries: dict) -> str:
     return q.format_searches(queries, bold=True) or "No active searches."
+
+
+def _run_all_queries(state: dict) -> list[str] | None:
+    """Run every saved query; return messages or None on anti-bot detection."""
+    all_msgs = []
+    query_list = list(state["queries"].items())
+    for i, (name, search) in enumerate(query_list):
+        new = scraper.run_query(
+            name,
+            search,
+            False,
+            state["queries"],
+            state["cfg"],
+            state["credentials"],
+            state["ntfy_config"],
+        )
+        if new is None:
+            return None
+        all_msgs.extend(new)
+        if i < len(query_list) - 1 and state["cfg"].query_delay > 0:
+            t.sleep(state["cfg"].query_delay)
+    return all_msgs
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -123,20 +146,15 @@ async def cmd_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     state = context.application.bot_data
     await update.message.reply_text("Running all searches...")
 
-    all_msgs = []
-    for name, search in state["queries"].items():
-        new = scraper.run_query(
-            name,
-            search,
-            False,
-            state["queries"],
-            state["cfg"],
-            state["credentials"],
-            state["ntfy_config"],
-        )
-        all_msgs.extend(new)
-
+    all_msgs = _run_all_queries(state)
     storage.save_queries(state["queries"])
+
+    if all_msgs is None:
+        await update.message.reply_text(
+            "Anti-bot challenge detected. Stop polling, wait a few hours, "
+            "solve any captcha on subito.it in a browser, then try again."
+        )
+        return
 
     if all_msgs:
         for m in all_msgs:
@@ -174,20 +192,18 @@ async def _polling_loop(app: Application) -> None:
         state = app.bot_data
         now = datetime.now().time()
         if _in_between(now, time(state["active_hour"]), time(state["pause_hour"])):
-            all_msgs = []
-            for name, search in state["queries"].items():
-                new = scraper.run_query(
-                    name,
-                    search,
-                    False,
-                    state["queries"],
-                    state["cfg"],
-                    state["credentials"],
-                    state["ntfy_config"],
-                )
-                all_msgs.extend(new)
+            all_msgs = _run_all_queries(state)
 
-            if notify and all_msgs:
+            if all_msgs is None:
+                await app.bot.send_message(
+                    chat_id=state["credentials"]["chatid"],
+                    text=(
+                        "Anti-bot challenge detected. Polling paused. "
+                        "Wait a few hours, solve any captcha on subito.it "
+                        "in a browser, then restart the bot."
+                    ),
+                )
+            elif notify and all_msgs:
                 for m in all_msgs:
                     await app.bot.send_message(
                         chat_id=state["credentials"]["chatid"],

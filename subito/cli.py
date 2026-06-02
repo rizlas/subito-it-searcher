@@ -39,6 +39,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Polling interval in seconds (default: 120)",
     )
     parser.add_argument(
+        "--query-delay",
+        dest="query_delay",
+        default=None,
+        type=int,
+        help="Seconds to wait between queries to avoid anti-bot detection (default: 30)",
+    )
+    parser.add_argument(
         "--active-hour",
         "-ah",
         dest="active_hour",

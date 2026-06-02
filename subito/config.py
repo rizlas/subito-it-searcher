@@ -21,3 +21,4 @@ class AppConfig:
     tgoff: bool = False
     ntfyoff: bool = False
     win_notifyoff: bool = False
+    query_delay: int = 60

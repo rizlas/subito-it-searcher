@@ -55,16 +55,23 @@ def main() -> None:
     queries = storage.load_queries()
     credentials = storage.load_api_credentials()
     ntfy_config = storage.load_ntfy_config()
-    cfg = AppConfig(
-        tgoff=args.tgoff,
-        ntfyoff=args.ntfyoff,
-        win_notifyoff=args.win_notifyoff,
-    )
 
     # Priority: CLI flag > env var > default
     delay = args.delay or int(os.environ.get("DELAY", 120))
     active_hour = args.active_hour or int(os.environ.get("ACTIVE_HOUR", 0))
     pause_hour = args.pause_hour or int(os.environ.get("PAUSE_HOUR", 0))
+    query_delay = (
+        args.query_delay
+        if args.query_delay is not None
+        else int(os.environ.get("QUERY_DELAY", 60))
+    )
+
+    cfg = AppConfig(
+        tgoff=args.tgoff,
+        ntfyoff=args.ntfyoff,
+        win_notifyoff=args.win_notifyoff,
+        query_delay=query_delay,
+    )
 
     # Subcommands
 
