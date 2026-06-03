@@ -224,6 +224,7 @@ def run_query(
 
     # Notify and report
     if msg:
+        logger.info(f"{len(msg)} new item(s) found for '{name}'.")
         if notify:
             if not cfg.win_notifyoff:
                 notify_windows(name)
@@ -231,8 +232,6 @@ def run_query(
                 send_telegram_messages(msg, credentials)
             if is_ntfy_active(ntfy_config, cfg):
                 send_ntfy_messages(msg, ntfy_config)
-            items_text = "\n".join(msg)
-            logger.info(f"{len(msg)} new item(s) found:\n{items_text}")
     else:
         logger.info("All lists are already up to date.")
 
