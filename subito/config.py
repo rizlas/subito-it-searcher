@@ -22,3 +22,4 @@ class AppConfig:
     ntfyoff: bool = False
     win_notifyoff: bool = False
     query_delay: int = 60
+    bot_detection_sleep: int = 86400

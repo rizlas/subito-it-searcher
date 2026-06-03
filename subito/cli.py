@@ -43,7 +43,16 @@ def build_parser() -> argparse.ArgumentParser:
         dest="query_delay",
         default=None,
         type=int,
-        help="Seconds to wait between queries to avoid anti-bot detection (default: 30)",
+        help=(
+            "Seconds to wait between queries to avoid anti-bot detection (default: 60)"
+        ),
+    )
+    parser.add_argument(
+        "--bot-detection-sleep",
+        dest="bot_detection_sleep",
+        default=None,
+        type=int,
+        help="Seconds to sleep after bot detection (default: 86400)",
     )
     parser.add_argument(
         "--active-hour",
@@ -101,7 +110,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--tuttosubito",
         dest="tuttosubito_only",
         action="store_true",
-        help="Only track items shipped via TuttoSubito (verified dealer + buyer protection)",
+        help=(
+            "Only track items shipped via TuttoSubito "
+            "(verified dealer + buyer protection)"
+        ),
     )
     p_add.set_defaults(tuttosubito_only=False)
 

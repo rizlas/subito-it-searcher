@@ -27,7 +27,7 @@ import logging
 import time
 
 from bs4 import BeautifulSoup
-import requests
+from curl_cffi import requests
 
 from subito.config import AppConfig
 from subito.notifications import (
@@ -57,11 +57,11 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",  # noqa: E501
 }
 
+
 def run_query(
     name: str,
     search: dict,
     notify: bool,
-    queries: dict,
     cfg: AppConfig,
     credentials: dict,
     ntfy_config: dict,
@@ -83,11 +83,12 @@ def run_query(
     msg = []
 
     # Fetch and parse
-    page = requests.get(url, headers=HEADERS)
+    page = requests.get(url, headers=HEADERS, impersonate="chrome124", timeout=15)
 
-    if page.status_code == 403 or "captcha-delivery.com" in page.text:
+    _antibot = ("captcha-delivery.com", "Please enable JS", "dd.js")
+    if page.status_code == 403 or any(m in page.text for m in _antibot):
         logger.warning(
-            "Anti-bot challenge detected (DataDome/captcha). "
+            "Bot detection triggered. "
             "Stop the script, wait a few hours, open subito.it in a browser and "
             "solve any captcha, then restart."
         )
@@ -97,8 +98,11 @@ def run_query(
 
     script_tag = soup.find("script", id="__NEXT_DATA__")
     if not script_tag:
-        logger.error("Could not find JSON data on page (Next.js data not found).")
-        return msg
+        logger.warning(
+            f"Could not find JSON data on page for '{name}'. "
+            "Aborting cycle — possible anti-bot challenge or site structure change."
+        )
+        return None
 
     json_data = json.loads(script_tag.string)
 
@@ -241,14 +245,15 @@ def refresh(
     cfg: AppConfig,
     credentials: dict,
     ntfy_config: dict,
-) -> None:
+) -> bool:
+    """Run all queries. Returns False if aborted due to anti-bot detection."""
     try:
         query_list = list(queries.items())
         for i, (name, search) in enumerate(query_list):
-            result = run_query(name, search, notify, queries, cfg, credentials, ntfy_config)
+            result = run_query(name, search, notify, cfg, credentials, ntfy_config)
             if result is None:
                 logger.warning("Aborting refresh cycle to protect IP reputation.")
-                break
+                return False
             if i < len(query_list) - 1 and cfg.query_delay > 0:
                 logger.debug(f"Waiting {cfg.query_delay}s before next query.")
                 time.sleep(cfg.query_delay)
@@ -260,3 +265,4 @@ def refresh(
         logger.warning("HTTP error")
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
+    return True

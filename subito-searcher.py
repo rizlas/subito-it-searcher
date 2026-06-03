@@ -11,8 +11,8 @@ import logging.handlers
 import os
 import time as t
 
+from subito import notifications, scraper, storage
 from subito import queries as q
-from subito import scraper, storage
 from subito.bot import run_bot
 from subito.cli import build_parser
 from subito.config import DATA_DIR, AppConfig
@@ -65,12 +65,18 @@ def main() -> None:
         if args.query_delay is not None
         else int(os.environ.get("QUERY_DELAY", 60))
     )
+    bot_detection_sleep = (
+        args.bot_detection_sleep
+        if args.bot_detection_sleep is not None
+        else int(os.environ.get("BOT_DETECTION_SLEEP", 86400))
+    )
 
     cfg = AppConfig(
         tgoff=args.tgoff,
         ntfyoff=args.ntfyoff,
         win_notifyoff=args.win_notifyoff,
         query_delay=query_delay,
+        bot_detection_sleep=bot_detection_sleep,
     )
 
     # Subcommands
@@ -85,7 +91,7 @@ def main() -> None:
             tuttosubito_only=args.tuttosubito_only,
         )
         scraper.run_query(
-            args.name, queries[args.name], False, queries, cfg, credentials, ntfy_config
+            args.name, queries[args.name], False, cfg, credentials, ntfy_config
         )
         storage.save_queries(queries)
         logger.info(f"Search '{args.name}' added.")
@@ -158,10 +164,20 @@ def main() -> None:
     try:
         while True:
             if _in_between(datetime.now().time(), time(active_hour), time(pause_hour)):
-                scraper.refresh(queries, notify, cfg, credentials, ntfy_config)
+                ok = scraper.refresh(queries, notify, cfg, credentials, ntfy_config)
                 notify = True
-                logger.info(f"Next poll in {delay} seconds.")
                 storage.save_queries(queries)
+                if not ok:
+                    h = cfg.bot_detection_sleep // 3600
+                    msg = f"Bot detection triggered. Polling paused for {h}h."
+                    logger.warning(msg)
+                    if notifications.is_telegram_active(credentials, cfg):
+                        notifications.send_telegram_messages([msg], credentials)
+                    if notifications.is_ntfy_active(ntfy_config, cfg):
+                        notifications.send_ntfy_messages([msg], ntfy_config)
+                    t.sleep(cfg.bot_detection_sleep)
+                    continue
+                logger.info(f"Next poll in {delay} seconds.")
             t.sleep(delay)
     except KeyboardInterrupt:
         logger.info("Stopped.")

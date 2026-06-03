@@ -48,7 +48,6 @@ def _run_all_queries(state: dict) -> list[str] | None:
             name,
             search,
             False,
-            state["queries"],
             state["cfg"],
             state["credentials"],
             state["ntfy_config"],
@@ -97,18 +96,24 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     state = context.application.bot_data
     name = " ".join(args[:url_idx])
     url = args[url_idx]
-    extra = args[url_idx + 1:]
+    extra = args[url_idx + 1 :]
     tuttosubito_only = "tuttosubito" in extra
     prices = [a for a in extra if a != "tuttosubito"]
     min_price = prices[0] if len(prices) > 0 else None
     max_price = prices[1] if len(prices) > 1 else None
 
-    q.add(state["queries"], url, name, min_price, max_price, tuttosubito_only=tuttosubito_only)
+    q.add(
+        state["queries"],
+        url,
+        name,
+        min_price,
+        max_price,
+        tuttosubito_only=tuttosubito_only,
+    )
     scraper.run_query(
         name,
         state["queries"][name],
         False,
-        state["queries"],
         state["cfg"],
         state["credentials"],
         state["ntfy_config"],
@@ -195,14 +200,16 @@ async def _polling_loop(app: Application) -> None:
             all_msgs = _run_all_queries(state)
 
             if all_msgs is None:
+                sleep_h = state["bot_detection_sleep"] // 3600
                 await app.bot.send_message(
                     chat_id=state["credentials"]["chatid"],
                     text=(
-                        "Anti-bot challenge detected. Polling paused. "
-                        "Wait a few hours, solve any captcha on subito.it "
-                        "in a browser, then restart the bot."
+                        f"Bot detection triggered. Polling paused for {sleep_h}h, "
+                        "then will resume automatically."
                     ),
                 )
+                await asyncio.sleep(state["bot_detection_sleep"])
+                continue
             elif notify and all_msgs:
                 for m in all_msgs:
                     await app.bot.send_message(
@@ -242,6 +249,7 @@ def run_bot(
             "delay": delay,
             "active_hour": active_hour,
             "pause_hour": pause_hour,
+            "bot_detection_sleep": cfg.bot_detection_sleep,
             "last_run": None,
         }
     )

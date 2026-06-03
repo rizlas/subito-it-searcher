@@ -1,3 +1,4 @@
+curl_cffi
 requests
 bs4
 python-telegram-bot==22.7
